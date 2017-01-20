@@ -26,21 +26,27 @@ def wildcard(filetypes):
         return ""
 
 
-class App(wx.App):
-    def OnInit(self):
-        self.SetAppName("Eelbrain")
-        self.SetAppDisplayName("Eelbrain")
+class MenuBarMixin(object)
+    """Mixin to create Eelbrain Menu
+
+    On macOS, this has to be done on the Application level, otherwise on the
+    frame level.
+
+    """
+    def __init__(self):
+        self.menu_bar = menu_bar = wx.MenuBar()
 
         # File Menu
-        m = file_menu = wx.Menu()
+        m = wx.Menu()
         m.Append(wx.ID_OPEN, '&Open... \tCtrl+O')
         m.AppendSeparator()
         m.Append(wx.ID_CLOSE, '&Close Window \tCtrl+W')
         m.Append(wx.ID_SAVE, "Save \tCtrl+S")
         m.Append(wx.ID_SAVEAS, "Save As... \tCtrl+Shift+S")
+        menu_bar.Append(m, "File")
 
         # Edit Menu
-        m = edit_menu = wx.Menu()
+        m = wx.Menu()
         m.Append(ID.UNDO, '&Undo \tCtrl+Z')
         m.Append(ID.REDO, '&Redo \tCtrl+Shift+Z')
         m.AppendSeparator()
@@ -49,58 +55,49 @@ class App(wx.App):
         m.Append(wx.ID_PASTE, 'Paste \tCtrl+V')
         m.AppendSeparator()
         m.Append(wx.ID_CLEAR, 'Cle&ar')
+        menu_bar.Append(m, "Edit")
 
         # Tools Menu
         # updated by the active GUI
-        tools_menu = wx.Menu()
+        m = wx.Menu()
+        menu_bar.Append(m, "Tools")
 
         # View Menu
-        m = view_menu = wx.Menu()
+        m = wx.Menu()
         m.Append(ID.SET_VLIM, "Set Y-Axis Limit... \tCtrl+l", "Change the Y-"
-                 "axis limit in epoch plots")
+                                                              "axis limit in epoch plots")
         m.Append(ID.SET_MARKED_CHANNELS, "Mark Channels...", "Mark specific "
-                 "channels in plots.")
+                                                             "channels in plots.")
         m.AppendSeparator()
         m.Append(ID.SET_LAYOUT, "&Set Layout... \tCtrl+Shift+l", "Change the "
-                 "page layout")
+                                                                 "page layout")
+        menu_bar.Append(m, "View")
 
         # Go Menu
-        m = go_menu = wx.Menu()
+        m = wx.Menu()
         m.Append(wx.ID_FORWARD, '&Forward \tCtrl+]', 'Go One Page Forward')
         m.Append(wx.ID_BACKWARD, '&Back \tCtrl+[', 'Go One Page Back')
         m.AppendSeparator()
         m.Append(ID.YIELD_TO_TERMINAL, '&Yield to Terminal \tAlt+Ctrl+Q')
+        menu_bar.Append(m, "Go")
 
         # Window Menu
-        m = window_menu = wx.Menu()
+        m = wx.Menu()
         m.Append(ID.WINDOW_MINIMIZE, '&Minimize \tCtrl+M')
         m.Append(ID.WINDOW_ZOOM, '&Zoom')
         m.AppendSeparator()
         m.Append(ID.WINDOW_TILE, '&Tile')
-        m.AppendSeparator()
-        self.window_menu_window_items = []
+        if IS_OSX:
+            m.AppendSeparator()
+        menu_bar.Append(m, "Window")
 
         # Help Menu
-        m = help_menu = wx.Menu()
+        m = wx.Menu()
         m.Append(ID.HELP_EELBRAIN, 'Eelbrain Help')
         m.Append(ID.HELP_PYTHON, "Python Help")
         m.AppendSeparator()
         m.Append(wx.ID_ABOUT, '&About Eelbrain')
-
-        # Menu Bar
-        menu_bar = wx.MenuBar()
-        menu_bar.Append(file_menu, "File")
-        menu_bar.Append(edit_menu, "Edit")
-        menu_bar.Append(tools_menu, "Tools")
-        menu_bar.Append(view_menu, "View")
-        menu_bar.Append(go_menu, "Go")
-        menu_bar.Append(window_menu, "Window")
-        menu_bar.Append(help_menu, self.GetMacHelpMenuTitleName() if IS_OSX else 'Help')
-        wx.MenuBar.MacSetCommonMenuBar(menu_bar)
-        self.menubar = menu_bar
-
-        # Dock icon
-        self.dock_icon = DockIcon(self)
+        menu_bar.Append(m, self.GetMacHelpMenuTitleName() if IS_OSX else 'Help')
 
         # Bind Menu Commands
         self.Bind(wx.EVT_MENU_OPEN, self.OnMenuOpened)
@@ -145,6 +142,23 @@ class App(wx.App):
         self.Bind(wx.EVT_UPDATE_UI, self.OnUpdateUITools, id=ID.TOOLS)
         self.Bind(wx.EVT_UPDATE_UI, self.OnUpdateUIUndo, id=ID.UNDO)
         self.Bind(wx.EVT_UPDATE_UI, self.OnUpdateUIUp, id=wx.ID_UP)
+
+
+class MacApp(MenuBarMixin, App):
+    def OnInit(self):
+        MenuBarMixin.__init__(self)
+        wx.MenuBar.MacSetCommonMenuBar(self.menubar)
+        self.window_menu_window_items = []
+        App.OnInit(self)
+
+
+class App(wx.App):
+    def OnInit(self):
+        self.SetAppName("Eelbrain")
+        self.SetAppDisplayName("Eelbrain")
+
+        # Dock icon
+        self.dock_icon = DockIcon(self)
 
         # register in IPython
         self.using_prompt_toolkit = False
@@ -351,7 +365,6 @@ class App(wx.App):
         else:
             self._about_frame = AboutFrame(None)
             self._about_frame.Show()
-#             frame.SetFocus()
 
     def OnClear(self, event):
         frame = self._get_active_frame()
