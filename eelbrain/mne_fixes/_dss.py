@@ -83,6 +83,91 @@ def dss(data, data_max_components=None, data_thresh=0,
         return dss_mat
 
 
+def dss_artifacts(data, data_max_components=None, data_thresh=0,
+                  bias_max_components=None, bias_thresh=0, return_data=True, highpass_cutoff=0):
+    """Process physiological data with denoising source separation (DSS)
+
+    Implementation follows the procedure described in Särelä & Valpola [1]_
+    and de Cheveigné & Simon [2]_.
+    Difference between this function and above is this function will use a bias
+    that tries to remove high frequency components that can be artifacts of noise.
+
+    Parameters
+    ----------
+    data : instance of Epochs | array of shape (n_trials, n_channels, n_times)
+        Data to be denoised.
+    data_max_components : int | None
+        Maximum number of components to keep during PCA decomposition of the
+        data. ``None`` (the default) keeps all suprathreshold components.
+    data_thresh : float | None
+        Threshold (relative to the largest component) above which components
+        will be kept during decomposition of the data. The default keeps all
+        non-zero values; to keep all values, specify ``thresh=None``.
+    bias_max_components : int | None
+        Maximum number of components to keep during PCA decomposition of the
+        bias function. ``None`` (the default) keeps all suprathreshold
+        components.
+    bias_thresh : float | None
+        Threshold (relative to the largest component) below which components
+        will be discarded during decomposition of the bias function. ``None``
+        (the default) keeps all non-zero values; to keep all values, pass
+        ``thresh=None`` and ``max_components=None``.
+    return_data : bool
+        Whether to return the denoised data along with the denoising matrix.
+
+    Returns
+    -------
+    dss_mat : array of shape (n_dss_components, n_channels)
+        The denoising matrix. Apply to data via ``np.dot(dss_mat, ep)``, where
+        ``ep`` is an epoch of shape (n_channels, n_samples).
+    dss_data : array of shape (n_trials, n_dss_components, n_samples)
+        The denoised data. Note that the DSS components are orthogonal virtual
+        channels and may be fewer in number than the number of channels in the
+        input Epochs object. Returned only if ``return_data`` is ``True``.
+
+    References
+    ----------
+    .. [1] Särelä, Jaakko, and Valpola, Harri (2005). Denoising source
+    separation. Journal of Machine Learning Research 6: 233–72.
+
+    .. [2] de Cheveigné, Alain, and Simon, Jonathan Z. (2008). Denoising based
+    on spatial filtering. Journal of Neuroscience Methods, 171(2): 331-339.
+    """
+
+    # shape may also be a matrix of N components x Time instead of tensor
+
+    # High pass data here or assume happened before this call?
+    #mne.filter.filter_data
+
+    if isinstance(data, (Epochs, EpochsArray)):
+        data_cov = compute_covariance(data).data
+
+        # This has to be changed I think, instead of average want some intensity of high vs low freq
+        bias_cov = np.cov(data.average().pick_types(eeg=True, ref_meg=False).
+                          data)
+        if return_data:
+            data = data.get_data()
+    elif isinstance(data, np.ndarray):
+        if data.ndim != 3:
+            raise ValueError('Data to denoise must have shape '
+                             '(n_trials, n_channels, n_times).')
+        data_cov = np.sum([np.dot(trial, trial.T) for trial in data], axis=0)
+
+        # This has to be changed
+        bias_cov = np.cov(data.mean(axis=0))
+    else:
+        raise TypeError('Data to denoise must be an instance of mne.Epochs or '
+                        'a numpy array.')
+    dss_mat = _dss(data_cov, bias_cov, data_max_components, data_thresh,
+                   bias_max_components, bias_thresh)
+    if return_data:
+        # next line equiv. to: np.array([np.dot(dss_mat, ep) for ep in data])
+        dss_data = np.einsum('ij,hjk->hik', dss_mat, data)
+        return dss_mat, dss_data
+    else:
+        return dss_mat
+
+
 def _dss(data_cov, bias_cov, data_max_components=None, data_thresh=None,
          bias_max_components=None, bias_thresh=None):
     """Process physiological data with denoising source separation (DSS)
