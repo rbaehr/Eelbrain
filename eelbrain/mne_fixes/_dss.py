@@ -136,13 +136,18 @@ def dss_artifacts(data, data_max_components=None, data_thresh=0,
 
     # shape may also be a matrix of N components x Time instead of tensor
 
+    # Variance of highpass / variance of low pass = power high freq / power low freq
     # High pass data here or assume happened before this call?
     #mne.filter.filter_data
 
     if isinstance(data, (Epochs, EpochsArray)):
+        # data needs to be changed to high passed version of data
+        # In covariance, computes power and crosspower
+        # data here needs to be band passed/low passed(everything not in frequency)
         data_cov = compute_covariance(data).data
 
         # This has to be changed I think, instead of average want some intensity of high vs low freq
+        # Power of high pass
         bias_cov = np.cov(data.average().pick_types(eeg=True, ref_meg=False).
                           data)
         if return_data:
