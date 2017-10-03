@@ -8,6 +8,7 @@
 
 import numpy as np
 from mne import Epochs, EpochsArray, compute_covariance
+from mne.filter import filter_data
 
 
 def dss(data, data_max_components=None, data_thresh=0,
@@ -84,7 +85,7 @@ def dss(data, data_max_components=None, data_thresh=0,
 
 
 def dss_artifacts(data, data_max_components=None, data_thresh=0,
-                  bias_max_components=None, bias_thresh=0, return_data=True, highpass_cutoff=0):
+                  bias_max_components=None, bias_thresh=0, return_data=True, sample_freq=0, raw_filter=(0,0), bias_filter=(0,0)):
     """Process physiological data with denoising source separation (DSS)
 
     Implementation follows the procedure described in Särelä & Valpola [1]_
@@ -114,6 +115,12 @@ def dss_artifacts(data, data_max_components=None, data_thresh=0,
         ``thresh=None`` and ``max_components=None``.
     return_data : bool
         Whether to return the denoised data along with the denoising matrix.
+    sample_freq : int
+        Sample frequency the data was captured at
+    raw_filter : int 2 tuple
+        Frequency band range for the raw data
+    bias_filter : int 2 tuple
+        Frequency band range for the biased data
 
     Returns
     -------
@@ -140,31 +147,20 @@ def dss_artifacts(data, data_max_components=None, data_thresh=0,
     # High pass data here or assume happened before this call?
     #mne.filter.filter_data
 
-    if isinstance(data, (Epochs, EpochsArray)):
-        # data needs to be changed to high passed version of data
-        # In covariance, computes power and crosspower
-        # data here needs to be band passed/low passed(everything not in frequency)
-        data_cov = compute_covariance(data).data
-
-        # This has to be changed I think, instead of average want some intensity of high vs low freq
-        # Power of high pass
-        bias_cov = np.cov(data.average().pick_types(eeg=True, ref_meg=False).
-                          data)
-        if return_data:
-            data = data.get_data()
-    elif isinstance(data, np.ndarray):
-        if data.ndim != 3:
+    if isinstance(data, np.ndarray):
+        if data.ndim != 2:
             raise ValueError('Data to denoise must have shape '
-                             '(n_trials, n_channels, n_times).')
-        data_cov = np.sum([np.dot(trial, trial.T) for trial in data], axis=0)
+                            '(n_channels, n_times).')
 
-        # This has to be changed
-        bias_cov = np.cov(data.mean(axis=0))
-    else:
-        raise TypeError('Data to denoise must be an instance of mne.Epochs or '
-                        'a numpy array.')
+        data_filtered = filter_data(data, sample_freq, raw_filter[0], raw_filter[1])
+        data_cov = np.dot(data_filtered, data_filtered.T)
+
+        bias_filtered = filter_data(data, sample_freq, bias_filter[0], bias_filter[1])
+        bias_cov = np.dot(bias_filtered, bias_filtered.T)
+
     dss_mat = _dss(data_cov, bias_cov, data_max_components, data_thresh,
                    bias_max_components, bias_thresh)
+
     if return_data:
         # next line equiv. to: np.array([np.dot(dss_mat, ep) for ep in data])
         dss_data = np.einsum('ij,hjk->hik', dss_mat, data)
